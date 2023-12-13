@@ -138,7 +138,7 @@ const particleVertex = glsl`#version 300 es
         }
         float perc = finalLifeMs / 2000.;
         gl_Position = vec4(finalPosition, 0.0, 1.0);
-        gl_PointSize = 10.;// 64.0 * perc;
+        gl_PointSize = 32.;//10.;// 64.0 * perc;
     }
 `
 const particleFrag = glsl`#version 300 es
@@ -155,19 +155,19 @@ const particleFrag = glsl`#version 300 es
         float alpha = finalLifeMs/2000.;
 
         /** Draw texture */
-        // float mid = .5;
-        // float cosine = cos(finalRotation);
-        // float sine = sin(finalRotation);
-        // vec2 rotated = vec2(cosine * (gl_PointCoord.x - mid) + sine * (gl_PointCoord.y - mid) + mid,
-        //                     cosine * (gl_PointCoord.y - mid) - sine * (gl_PointCoord.x - mid) + mid);
-        // vec4 color = texture(graphic, rotated);
-        // fragColor = color * alpha;
+        float mid = .5;
+        float cosine = cos(finalRotation);
+        float sine = sin(finalRotation);
+        vec2 rotated = vec2(cosine * (gl_PointCoord.x - mid) + sine * (gl_PointCoord.y - mid) + mid,
+                            cosine * (gl_PointCoord.y - mid) - sine * (gl_PointCoord.x - mid) + mid);
+        vec4 color = texture(graphic, rotated);
+        fragColor = color * alpha;
 
         /** Draw circle */
-        float distanceFromPointCenter = distance(gl_PointCoord.xy, vec2(0.5));
-        if (distanceFromPointCenter > .5) discard;
-        // TODO particle colors as vertex attributes
-        fragColor = vec4(.8, .9*alpha, .1, 1.) * alpha;
+        // float distanceFromPointCenter = distance(gl_PointCoord.xy, vec2(0.5));
+        // if (distanceFromPointCenter > .5) discard;
+        // // TODO particle colors as vertex attributes
+        // fragColor = vec4(.8, .9*alpha, .1, 1.) * alpha;
     }
 `
 
@@ -394,7 +394,7 @@ const draw = (timestamp: number) => {
 
     gl.uniform1f(u_random, Math.random());
     gl.uniform1f(u_deltaMs, elapsedMs);
-    gl.uniform2fv(u_gravity, [0, -.5]);
+    gl.uniform2fv(u_gravity, [0, -.8]);
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, spriteTex);
     gl.uniform1i(u_graphic, 0);
