@@ -1,5 +1,6 @@
 // import { Matrix } from "./matrix";
 import spriteImage from './sprite.png'
+import obstacleImage from './obstacle.png';
 
 const canvas = document.createElement('canvas');
 canvas.width = 800;
@@ -70,6 +71,8 @@ const particleVertex = glsl`#version 300 es
     uniform float deltaMs;
     uniform vec2 gravity;
 
+    uniform sampler2D obstacle;
+
     layout(location=0) in vec2 position;
     layout(location=1) in vec2 velocity;
     layout(location=2) in float rotation;
@@ -83,6 +86,9 @@ const particleVertex = glsl`#version 300 es
     out float finalLifeMs;
     void main() {
 
+        float width = 800.;
+        float height = 800.;
+
         if (lifeMs >= 0.) {
             float seconds = deltaMs / 1000.0;
             // euler integration
@@ -91,7 +97,30 @@ const particleVertex = glsl`#version 300 es
             finalRotation = rotation + angularVelocity * seconds;
             finalAngularVelocity = angularVelocity; // todo weird artifact of re-using the same buffer layout for update/draw
             finalLifeMs = lifeMs - deltaMs;
-            
+
+
+            // try distance to center?
+            // if (distance(finalPosition, vec2(0.)) < .5) {
+            //     // non opaque means we collide! recalc final pos/vel
+            //     // vec2 normal = normalize(position - finalPosition); // guess the collision normal is the opposite direction
+            //     vec2 newVelocity =  velocity * -1.; //reflect(velocity, normal) * 1.1;
+            //     finalVelocity = newVelocity + gravity * seconds;
+            //     finalPosition = position + newVelocity * seconds + gravity * .5 * seconds * seconds;
+            // }
+
+            // sample obstacle mask texture to see if we collide
+            // clip space to obstacle tex coords
+            vec2 samplePoint = ((finalPosition + 1.) / 2.);
+
+            vec4 collides = texture(obstacle, samplePoint);
+            if (distance(collides, vec4(0.)) > .01) {
+                // non opaque means we collide! recalc final pos/vel
+                // vec2 normal = normalize(position - finalPosition); // guess the collision normal is the opposite direction
+                vec2 newVelocity =  velocity * -1.; //reflect(velocity, normal) * 1.1;
+                finalVelocity = newVelocity + gravity * seconds;
+                finalPosition = position + newVelocity * seconds + gravity * .5 * seconds * seconds;
+            }
+
         } else {
             // Reset particle!
 
@@ -109,7 +138,7 @@ const particleVertex = glsl`#version 300 es
         }
         float perc = finalLifeMs / 2000.;
         gl_Position = vec4(finalPosition, 0.0, 1.0);
-        gl_PointSize = 64.0;// * perc;
+        gl_PointSize = 10.;// 64.0 * perc;
     }
 `
 const particleFrag = glsl`#version 300 es
@@ -124,22 +153,21 @@ const particleFrag = glsl`#version 300 es
     void main() {
 
         float alpha = finalLifeMs/2000.;
-        float mid = .5;
-        float cosine = cos(finalRotation);
-        float sine = sin(finalRotation);
-        vec2 rotated = vec2(cosine * (gl_PointCoord.x - mid) + sine * (gl_PointCoord.y - mid) + mid,
-                            cosine * (gl_PointCoord.y - mid) - sine * (gl_PointCoord.x - mid) + mid);
-        vec4 color = texture(graphic, rotated);
-        // color.a = alpha * color.a;
-        fragColor = color * alpha;
 
-        // float distanceFromPointCenter = distance(gl_PointCoord.xy, vec2(0.5));
-        // if (distanceFromPointCenter > .5) discard;
+        /** Draw texture */
+        // float mid = .5;
+        // float cosine = cos(finalRotation);
+        // float sine = sin(finalRotation);
+        // vec2 rotated = vec2(cosine * (gl_PointCoord.x - mid) + sine * (gl_PointCoord.y - mid) + mid,
+        //                     cosine * (gl_PointCoord.y - mid) - sine * (gl_PointCoord.x - mid) + mid);
+        // vec4 color = texture(graphic, rotated);
+        // fragColor = color * alpha;
 
-        // // TODO particle colors as vertex attributes
-        // // TODO sprites/animations
-        // float alpha = finalLifeMs/2000.;
-        // fragColor = vec4(.8, .9*alpha, .1, alpha);
+        /** Draw circle */
+        float distanceFromPointCenter = distance(gl_PointCoord.xy, vec2(0.5));
+        if (distanceFromPointCenter > .5) discard;
+        // TODO particle colors as vertex attributes
+        fragColor = vec4(.8, .9*alpha, .1, 1.) * alpha;
     }
 `
 
@@ -189,7 +217,7 @@ const particleData = new Float32Array(numParticles * numInputFloats);
 const bytesPerFloat = 4;
 for (let i = 0; i < numParticles * numInputFloats; i += numInputFloats) {
     particleData.set([
-        Math.random()*2-1, Math.random()*2-1, // pos
+        Math.random()*2-1, Math.random()*2-1, // pos in clipspace
         Math.random(), Math.random(),                        // velocity
         Math.random() * TwoPI,                            // rotation
         Math.random() * 2.5,                             // angular velocity
@@ -313,10 +341,12 @@ const u_random = gl.getUniformLocation(program, 'uRandom');
 const u_deltaMs = gl.getUniformLocation(program, 'deltaMs');
 const u_gravity = gl.getUniformLocation(program, 'gravity');
 const u_graphic = gl.getUniformLocation(program, 'graphic');
+const u_obstacle = gl.getUniformLocation(program, 'obstacle');
 
 const spriteTex = gl.createTexture();
 gl.bindTexture(gl.TEXTURE_2D, spriteTex);
 gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
+gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
 gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
 gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
 gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
@@ -326,8 +356,26 @@ sprite.onload = () => {
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, spriteTex);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, sprite);
+    gl.bindTexture(gl.TEXTURE_2D, null);
 }
 sprite.src = spriteImage;
+
+const obstacleTex = gl.createTexture();
+const obstacle = new Image();
+gl.bindTexture(gl.TEXTURE_2D, obstacleTex);
+gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
+gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+obstacle.onload = () => {
+    gl.activeTexture(gl.TEXTURE0 + 1);
+    gl.bindTexture(gl.TEXTURE_2D, obstacleTex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, obstacle);
+    // gl.bindTexture(gl.TEXTURE_2D, null);
+}
+obstacle.src = obstacleImage;
 
 
 let index = 0;
@@ -348,6 +396,7 @@ const draw = (timestamp: number) => {
     gl.uniform1f(u_deltaMs, elapsedMs);
     gl.uniform2fv(u_gravity, [0, -.5]);
     gl.uniform1i(u_graphic, 0);
+    gl.uniform1i(u_obstacle, 1);
 
     gl.clearColor(0, 0, 0, 1.0);
     gl.clear(gl.COLOR_BUFFER_BIT);

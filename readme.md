@@ -17,7 +17,7 @@
       - could use a texture to communicate
 * [x] Support arbitrary sprites
 * [ ] Support animation?
-* [ ] Collisions? Perhaps simple masking could work? Like for walls and junk
+* [x] Collisions? Perhaps simple masking could work? Like for walls and junk
   - create obstacle textures that can be sampled in the vertex shader
   - probably need a normal map texture to push particles in the right direction if colliding
 
