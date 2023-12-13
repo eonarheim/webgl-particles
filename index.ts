@@ -395,7 +395,12 @@ const draw = (timestamp: number) => {
     gl.uniform1f(u_random, Math.random());
     gl.uniform1f(u_deltaMs, elapsedMs);
     gl.uniform2fv(u_gravity, [0, -.5]);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, spriteTex);
     gl.uniform1i(u_graphic, 0);
+
+    gl.activeTexture(gl.TEXTURE0 + 1);
+    gl.bindTexture(gl.TEXTURE_2D, obstacleTex);
     gl.uniform1i(u_obstacle, 1);
 
     gl.clearColor(0, 0, 0, 1.0);
