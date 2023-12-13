@@ -43,7 +43,8 @@ gl.clear(gl.COLOR_BUFFER_BIT);
 // Enable alpha blending
 // https://www.realtimerendering.com/blog/gpus-prefer-premultiplication/
 gl.enable(gl.BLEND);
-gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+// gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
 // gl.blendEquationSeparate(gl.FUNC_ADD, gl.FUNC_ADD);
 // gl.blendFuncSeparate(gl.ONE, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
 
@@ -129,8 +130,8 @@ const particleFrag = glsl`#version 300 es
         vec2 rotated = vec2(cosine * (gl_PointCoord.x - mid) + sine * (gl_PointCoord.y - mid) + mid,
                             cosine * (gl_PointCoord.y - mid) - sine * (gl_PointCoord.x - mid) + mid);
         vec4 color = texture(graphic, rotated);
-        color.a = alpha * color.a;
-        fragColor = color;
+        // color.a = alpha * color.a;
+        fragColor = color * alpha;
 
         // float distanceFromPointCenter = distance(gl_PointCoord.xy, vec2(0.5));
         // if (distanceFromPointCenter > .5) discard;
@@ -195,6 +196,40 @@ for (let i = 0; i < numParticles * numInputFloats; i += numInputFloats) {
         Math.random()*2000 // life
     ], i);
 }
+
+const getBufferContents = (buffer: WebGLBuffer) => {
+    // Consider this `sync` object as a flag. It will be dropped
+    // into WebGL's instruction pipeline. When WebGL reaches
+    // this sync object, it will set its status two one of FOUR
+    // values.
+    const sync = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0)!;
+
+    const checkStatus = () => {
+        // Get the status
+        const status = gl.clientWaitSync(sync, gl.SYNC_FLUSH_COMMANDS_BIT, 0);
+
+        if (status === gl.TIMEOUT_EXPIRED) {
+            console.log('GPU is still busy. Let\'s wait some more.');
+            setTimeout(checkStatus);
+        } else if (status === gl.WAIT_FAILED) {
+            console.error('Something bad happened and we won\'t get any response.');
+        } else  {
+            // This code will be reached if the status is either
+            // CONDITION_SATISFIED or SIGNALED_ALREADY. We don't 
+            // really care which status it is as long as one of
+            // these was found. So we can safely read the buffer data
+            // (assuming another draw call hasn't initiated more
+            // changes....)
+            const view = new Float32Array(numParticles * numInputFloats);
+            gl.bindBuffer(gl.TRANSFORM_FEEDBACK_BUFFER, buffer);
+            gl.getBufferSubData(gl.TRANSFORM_FEEDBACK_BUFFER, 0, view);
+            gl.bindBuffer(gl.TRANSFORM_FEEDBACK_BUFFER, null);
+            console.log(view);
+        }
+    };
+
+    setTimeout(checkStatus);
+};
 
 
 let vaos: WebGLVertexArrayObject[] = [];
@@ -281,7 +316,7 @@ const u_graphic = gl.getUniformLocation(program, 'graphic');
 
 const spriteTex = gl.createTexture();
 gl.bindTexture(gl.TEXTURE_2D, spriteTex);
-gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
 gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
 gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
 gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
