@@ -8,7 +8,7 @@ const gl = canvas.getContext('webgl2',
     {
         antialias: false,
         premultipliedAlpha: false,
-        alpha: true,
+        alpha: false,
         depth: true,
         powerPreference: 'high-performance'
     })!;
@@ -39,15 +39,29 @@ gl.clear(gl.COLOR_BUFFER_BIT);
 // Enable alpha blending
 // https://www.realtimerendering.com/blog/gpus-prefer-premultiplication/
 gl.enable(gl.BLEND);
-gl.blendEquation(gl.FUNC_ADD);
-gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
-gl.blendEquationSeparate(gl.FUNC_ADD, gl.FUNC_ADD);
-gl.blendFuncSeparate(gl.ONE, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+// gl.blendEquationSeparate(gl.FUNC_ADD, gl.FUNC_ADD);
+// gl.blendFuncSeparate(gl.ONE, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
 
 
 // create shader programs
 const glsl = (x: any) => x[0];
 const txVertex = glsl`#version 300 es
+
+    /* From TheBookOfShaders, chapter 10. This is a slightly upscaled implementation
+    of the algorithm:
+        r = Math.cos(aReallyHugeNumber);
+    except it attempts to avoid the concentration of values around 1 and 0 by 
+    multiplying by a very large irrational number and then discarding the result's
+    integer component. Acceptable results. Other deterministic pseudo-random number 
+    algorithms are available (including random textures).
+    */
+    float rand2(vec2 source)
+    {
+        return fract(sin(dot(source.xy, vec2(1.9898,1.2313))) * 42758.5453123);
+    } 
+
+    uniform float uRandom;
     uniform float deltaMs;
     uniform vec2 gravity;
 
@@ -55,26 +69,44 @@ const txVertex = glsl`#version 300 es
     layout(location=1) in vec2 velocity;
     layout(location=2) in float rotation;
     layout(location=3) in float angularVelocity;
+    layout(location=4) in float lifeMs;
 
     out vec2 finalPosition;
     out vec2 finalVelocity;
     out float finalRotation;
     out float finalAngularVelocity;
+    out float finalLifeMs;
     void main() {
-        float seconds = deltaMs / 1000.0;
-        // euler integration
-        finalVelocity = velocity + gravity * seconds;
-        finalPosition = position + velocity * seconds + gravity * .5 * seconds * seconds;
-        finalRotation = rotation + angularVelocity * seconds;
-        finalAngularVelocity = angularVelocity; // todo weird artifact of re-using the same buffer layout for update/draw
 
+        if (lifeMs >= 0.) {   
+            float seconds = deltaMs / 1000.0;
+            // euler integration
+            finalVelocity = velocity + gravity * seconds;
+            finalPosition = position + velocity * seconds + gravity * .5 * seconds * seconds;
+            finalRotation = rotation + angularVelocity * seconds;
+            finalAngularVelocity = angularVelocity; // todo weird artifact of re-using the same buffer layout for update/draw
+            finalLifeMs = lifeMs - deltaMs;
+            
+        } else {
+            float s  = float(gl_VertexID);
+            float r1 = rand2(vec2(s, uRandom));
+            float r2 = rand2(vec2(r1, uRandom));
+            float r3 = rand2(vec2(uRandom, r1 * uRandom));
+
+            finalVelocity = vec2(r3 * 2. - 1.5, 1.5 * r1);
+            finalPosition = vec2(r2 * 2. - 1., -1);
+            finalRotation = 0.;
+            finalAngularVelocity = 0.;
+            finalLifeMs = 2000. * r3;
+        }
+        float perc = finalLifeMs / 2000.;
         gl_Position = vec4(finalPosition, 0.0, 1.0);
-        gl_PointSize = 10.0;
+        gl_PointSize = 30.0 * perc;
     }
 `
 const particleFrag = glsl`#version 300 es
     precision mediump float;
-
+    in float finalLifeMs;
     out vec4 fragColor;
     void main() {
 
@@ -83,7 +115,8 @@ const particleFrag = glsl`#version 300 es
 
         // TODO particle colors as vertex attributes
         // TODO sprites/animations
-        fragColor = vec4(1., .1, .1, 1.0);
+        float alpha = finalLifeMs/2000.;
+        fragColor = vec4(.8, .9*alpha, .1, alpha);
     }
 `
 
@@ -109,7 +142,7 @@ if (!success) {
 }
 gl.attachShader(program, fragmentShader);
 
-gl.transformFeedbackVaryings(program, ['finalPosition', 'finalVelocity', 'finalRotation', 'finalAngularVelocity'], gl.INTERLEAVED_ATTRIBS);
+gl.transformFeedbackVaryings(program, ['finalPosition', 'finalVelocity', 'finalRotation', 'finalAngularVelocity', 'finalLifeMs'], gl.INTERLEAVED_ATTRIBS);
 gl.linkProgram(program);
 
 // Check for sadness
@@ -126,7 +159,7 @@ gl.useProgram(program);
 
 // initalize data
 const numParticles = 10000;
-const numInputFloats = 2 + 2 + 1 + 1;
+const numInputFloats = 2 + 2 + 1 + 1 + 1;
 const particleData = new Float32Array(numParticles * numInputFloats);
 const bytesPerFloat = 4;
 for (let i = 0; i < numParticles * numInputFloats; i += numInputFloats) {
@@ -134,7 +167,8 @@ for (let i = 0; i < numParticles * numInputFloats; i += numInputFloats) {
         Math.random()*2-1, Math.random()*2-1, // pos
         Math.random(), Math.random(),                        // velocity
         0,                            // rotation
-        0                             // angular velocity
+        0,                             // angular velocity
+        Math.random()*2000 // life
     ], i);
 }
 
@@ -161,12 +195,16 @@ offset += bytesPerFloat * 1
 // angularVelocity
 gl.vertexAttribPointer(3, 1, gl.FLOAT, false, numInputFloats * bytesPerFloat, offset);
 offset += bytesPerFloat * 1
+// life
+gl.vertexAttribPointer(4, 1, gl.FLOAT, false, numInputFloats * bytesPerFloat, offset);
+offset += bytesPerFloat * 1
 
 // enable attributes
 gl.enableVertexAttribArray(0);
 gl.enableVertexAttribArray(1);
 gl.enableVertexAttribArray(2);
 gl.enableVertexAttribArray(3);
+gl.enableVertexAttribArray(4);
 
 vaos.push(vao1);
 buffers.push(particleDataBuffer1);
@@ -192,12 +230,16 @@ offset += bytesPerFloat * 1
 // angularVelocity
 gl.vertexAttribPointer(3, 1, gl.FLOAT, false, numInputFloats * bytesPerFloat, offset);
 offset += bytesPerFloat * 1
+// life
+gl.vertexAttribPointer(4, 1, gl.FLOAT, false, numInputFloats * bytesPerFloat, offset);
+offset += bytesPerFloat * 1
 
 // enable attributes
 gl.enableVertexAttribArray(0);
 gl.enableVertexAttribArray(1);
 gl.enableVertexAttribArray(2);
 gl.enableVertexAttribArray(3);
+gl.enableVertexAttribArray(4);
 
 vaos.push(vao2);
 buffers.push(particleDataBuffer2);
@@ -206,26 +248,31 @@ buffers.push(particleDataBuffer2);
 gl.bindVertexArray(null);
 gl.bindBuffer(gl.ARRAY_BUFFER, null);
 
-gl.clearColor(0, 0, 0, 1);
 
-
-// uniforms 
+// uniforms
+const u_random = gl.getUniformLocation(program, 'uRandom');
 const u_deltaMs = gl.getUniformLocation(program, 'deltaMs');
 const u_gravity = gl.getUniformLocation(program, 'gravity');
 
 let index = 0;
 let currentVao = vaos[(index) % 2];
 let currentBuffer = buffers[(index + 1) % 2];
-let lastTime = performance.now();
+let lastTime = 0;
 const draw = (timestamp: number) => {
     requestAnimationFrame(draw);
 
-    const elapsedMs = timestamp - lastTime;
+    let elapsedMs = timestamp - lastTime;
     lastTime = timestamp;
+    if (elapsedMs <= 0) {
+        elapsedMs = 1;
+    }
+    // console.log(elapsedMs);
 
+    gl.uniform1f(u_random, Math.random());
     gl.uniform1f(u_deltaMs, elapsedMs);
     gl.uniform2fv(u_gravity, [0, -.5]);
 
+    gl.clearColor(0, 0, 0, 1.0);
     gl.clear(gl.COLOR_BUFFER_BIT);
 
     // Bind one buffer to ARRAY_BUFFER and the other to TFB
