@@ -1,11 +1,12 @@
 // import { Matrix } from "./matrix";
 import spriteImage from './sprite.png'
 import obstacleImage from './obstacle.png';
+const canvas = document.querySelector('canvas')!;
 
-const canvas = document.createElement('canvas');
-canvas.width = 800;
-canvas.height = 800;
-document.body.appendChild(canvas);
+// const canvas = document.createElement('canvas');
+// canvas.width = 800;
+// canvas.height = 800;
+// document.body.appendChild(canvas);
 const gl = canvas.getContext('webgl2',
     {
         antialias: false,
@@ -377,6 +378,17 @@ obstacle.onload = () => {
 }
 obstacle.src = obstacleImage;
 
+let numDraw = 100;
+const particleNumberDisplay = document.querySelector('#num-particles') as HTMLDivElement;
+particleNumberDisplay.innerText = numDraw.toString();
+
+const particleSlider = document.querySelector('#particles') as HTMLInputElement;
+particleSlider.value = numDraw.toString();
+particleSlider.addEventListener('change', evt => {
+    numDraw = +(evt?.target as HTMLInputElement)!.value;
+    particleNumberDisplay.innerText = numDraw.toString();
+});
+
 
 let index = 0;
 let currentVao = vaos[(index) % 2];
@@ -412,7 +424,7 @@ const draw = (timestamp: number) => {
 
     // Perform transform feedback and the draw call
     gl.beginTransformFeedback(gl.POINTS);
-    gl.drawArrays(gl.POINTS, 0, numParticles);
+    gl.drawArrays(gl.POINTS, 0, numDraw);
     gl.endTransformFeedback();
 
     // Clean up after ourselves to avoid errors.
