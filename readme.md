@@ -1,5 +1,6 @@
 # WebGL Particle System
 
+![particle fire effect 100,000 particles](./particles-webgl.gif)
 
 ## TODOs
 
