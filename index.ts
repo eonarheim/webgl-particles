@@ -1,4 +1,4 @@
-// import { Matrix } from "./matrix";
+import { Matrix } from "./matrix";
 import spriteImage from './sprite.png'
 import obstacleImage from './obstacle.png';
 const canvas = document.querySelector('canvas')!;
@@ -35,7 +35,7 @@ function _processSourceForError(source: string, errorInfo: string) {
 }
 
 
-// const ortho = Matrix.ortho(0, gl.canvas.width, gl.canvas.height, 0, 400, -400);
+const ortho = Matrix.ortho(0, gl.canvas.width, gl.canvas.height, 0, 400, -400);
 gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
 
 // Clear background
@@ -68,9 +68,14 @@ const particleVertex = glsl`#version 300 es
         return fract(sin(dot(source.xy, vec2(1.9898,1.2313))) * 42758.5453123);
     } 
 
+    float ran_range(float ran, float minf, float maxf) {
+        return ran * (maxf - minf) + minf;
+    }
+
     uniform float uRandom;
     uniform float deltaMs;
     uniform vec2 gravity;
+    uniform mat4 u_matrix;
 
     uniform sampler2D obstacle;
 
@@ -111,13 +116,14 @@ const particleVertex = glsl`#version 300 es
 
             // sample obstacle mask texture to see if we collide
             // clip space to obstacle tex coords
-            vec2 samplePoint = ((finalPosition + 1.) / 2.);
+            // vec2 samplePoint = ((finalPosition + 1.) / 2.);
+            vec2 samplePoint = finalPosition / vec2(width, height);
 
             vec4 collides = texture(obstacle, samplePoint);
             if (distance(collides, vec4(0.)) > .01) {
                 // non opaque means we collide! recalc final pos/vel
                 // vec2 normal = normalize(position - finalPosition); // guess the collision normal is the opposite direction
-                vec2 newVelocity =  velocity * -1.; //reflect(velocity, normal) * 1.1;
+                vec2 newVelocity =  velocity * -.1; // lose energy
                 finalVelocity = newVelocity + gravity * seconds;
                 finalPosition = position + newVelocity * seconds + gravity * .5 * seconds * seconds;
             }
@@ -131,14 +137,15 @@ const particleVertex = glsl`#version 300 es
             float r2 = rand2(vec2(r1, uRandom));
             float r3 = rand2(vec2(uRandom, r1 * uRandom));
 
-            finalVelocity = vec2(r3 * 2. - 1.5, 1.5 * r1);
-            finalPosition = vec2(r2 * 2. - 1., -1);
+            finalVelocity = vec2(ran_range(r1, -200., 200.), ran_range(r2, 0., -200.));
+            finalPosition = vec2(ran_range(r2, 0., 800.), 800.);
             finalRotation = 3.14 * 2. * r3;
             finalAngularVelocity = 6. * r2 - 3.14;
             finalLifeMs = 2000. * r3;
         }
         float perc = finalLifeMs / 2000.;
-        gl_Position = vec4(finalPosition, 0.0, 1.0);
+        vec2 transformedPos = (u_matrix * vec4(finalPosition, 0., 1.)).xy;
+        gl_Position = vec4(transformedPos, 0.0, 1.0);
         gl_PointSize = 32.;//10.;// 64.0 * perc;
     }
 `
@@ -218,8 +225,9 @@ const particleData = new Float32Array(numParticles * numInputFloats);
 const bytesPerFloat = 4;
 for (let i = 0; i < numParticles * numInputFloats; i += numInputFloats) {
     particleData.set([
-        Math.random()*2-1, Math.random()*2-1, // pos in clipspace
-        Math.random(), Math.random(),                        // velocity
+        Math.random()* 800, Math.random()*800, // pos in worldspace
+        // Math.random()*2-1, Math.random()*2-1, // pos in clipspace
+        Math.random() * 200 - 100, Math.random() * 200 - 100,                        // velocity
         Math.random() * TwoPI,                            // rotation
         Math.random() * 2.5,                             // angular velocity
         Math.random()*2000 // life
@@ -338,6 +346,7 @@ gl.bindBuffer(gl.ARRAY_BUFFER, null);
 
 
 // uniforms
+const u_matrix = gl.getUniformLocation(program, 'u_matrix');
 const u_random = gl.getUniformLocation(program, 'uRandom');
 const u_deltaMs = gl.getUniformLocation(program, 'deltaMs');
 const u_gravity = gl.getUniformLocation(program, 'gravity');
@@ -347,7 +356,7 @@ const u_obstacle = gl.getUniformLocation(program, 'obstacle');
 const spriteTex = gl.createTexture();
 gl.bindTexture(gl.TEXTURE_2D, spriteTex);
 gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
-gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+// gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
 gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
 gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
 gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
@@ -365,7 +374,7 @@ const obstacleTex = gl.createTexture();
 const obstacle = new Image();
 gl.bindTexture(gl.TEXTURE_2D, obstacleTex);
 gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
-gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+// gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
 gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
 gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
 gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
@@ -403,10 +412,10 @@ const draw = (timestamp: number) => {
         elapsedMs = 1;
     }
     // console.log(elapsedMs);
-
+    gl.uniformMatrix4fv(u_matrix, false, ortho.data);
     gl.uniform1f(u_random, Math.random());
     gl.uniform1f(u_deltaMs, elapsedMs);
-    gl.uniform2fv(u_gravity, [0, -.8]);
+    gl.uniform2fv(u_gravity, [0, -100]);
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, spriteTex);
     gl.uniform1i(u_graphic, 0);

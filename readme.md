@@ -3,7 +3,7 @@
 ![particle fire effect 100,000 particles](./particles-webgl.gif)
 
 ## TODOs
-* [ ] world space coords
+* [x] world space coords
 * [ ] start/end color
 * [ ] allow custom shaders?
 * [ ] Particles builder page to experiment and get example snippet
