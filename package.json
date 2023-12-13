@@ -1,6 +1,7 @@
 {
   "scripts": {
-    "start": "parcel serve index.html"
+    "start": "parcel serve index.html",
+    "build": "parcel build index.html --dist-dir ./dist --public-url /"
   },
   "devDependencies": {
     "parcel": "2.10.3",
