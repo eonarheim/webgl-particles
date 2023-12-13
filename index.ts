@@ -158,7 +158,7 @@ gl.useProgram(program);
 // gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, tfo);
 
 // initalize data
-const numParticles = 10000;
+const numParticles = 100_000;
 const numInputFloats = 2 + 2 + 1 + 1 + 1;
 const particleData = new Float32Array(numParticles * numInputFloats);
 const bytesPerFloat = 4;
