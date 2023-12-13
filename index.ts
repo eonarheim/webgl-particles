@@ -69,7 +69,7 @@ const txVertex = glsl`#version 300 es
         finalAngularVelocity = angularVelocity; // todo weird artifact of re-using the same buffer layout for update/draw
 
         gl_Position = vec4(finalPosition, 0.0, 1.0);
-        gl_PointSize = 4.0;
+        gl_PointSize = 10.0;
     }
 `
 const particleFrag = glsl`#version 300 es
@@ -120,18 +120,19 @@ if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
 
 gl.useProgram(program);
 
+// Use if you have multiple transform feedback
 // const tfo = gl.createTransformFeedback()!
 // gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, tfo);
 
 // initalize data
-const numParticles = 100;
+const numParticles = 10000;
 const numInputFloats = 2 + 2 + 1 + 1;
 const particleData = new Float32Array(numParticles * numInputFloats);
 const bytesPerFloat = 4;
 for (let i = 0; i < numParticles * numInputFloats; i += numInputFloats) {
     particleData.set([
-        Math.random()-.5, Math.random()-.5, // pos
-        0, 1.1,                        // velocity
+        Math.random()*2-1, Math.random()*2-1, // pos
+        Math.random(), Math.random(),                        // velocity
         0,                            // rotation
         0                             // angular velocity
     ], i);
@@ -223,7 +224,7 @@ const draw = (timestamp: number) => {
     lastTime = timestamp;
 
     gl.uniform1f(u_deltaMs, elapsedMs);
-    gl.uniform2fv(u_gravity, [0, -1]);
+    gl.uniform2fv(u_gravity, [0, -.5]);
 
     gl.clear(gl.COLOR_BUFFER_BIT);
 
