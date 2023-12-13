@@ -1,4 +1,5 @@
 // import { Matrix } from "./matrix";
+import spriteImage from './sprite.png'
 
 const canvas = document.createElement('canvas');
 canvas.width = 800;
@@ -12,6 +13,9 @@ const gl = canvas.getContext('webgl2',
         depth: true,
         powerPreference: 'high-performance'
     })!;
+
+
+
 
 function _processSourceForError(source: string, errorInfo: string) {
     if (!source) {
@@ -46,7 +50,7 @@ gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
 
 // create shader programs
 const glsl = (x: any) => x[0];
-const txVertex = glsl`#version 300 es
+const particleVertex = glsl`#version 300 es
 
     /* From TheBookOfShaders, chapter 10. This is a slightly upscaled implementation
     of the algorithm:
@@ -78,7 +82,7 @@ const txVertex = glsl`#version 300 es
     out float finalLifeMs;
     void main() {
 
-        if (lifeMs >= 0.) {   
+        if (lifeMs >= 0.) {
             float seconds = deltaMs / 1000.0;
             // euler integration
             finalVelocity = velocity + gravity * seconds;
@@ -88,6 +92,9 @@ const txVertex = glsl`#version 300 es
             finalLifeMs = lifeMs - deltaMs;
             
         } else {
+            // Reset particle!
+
+            // Seed some randoms
             float s  = float(gl_VertexID);
             float r1 = rand2(vec2(s, uRandom));
             float r2 = rand2(vec2(r1, uRandom));
@@ -95,40 +102,55 @@ const txVertex = glsl`#version 300 es
 
             finalVelocity = vec2(r3 * 2. - 1.5, 1.5 * r1);
             finalPosition = vec2(r2 * 2. - 1., -1);
-            finalRotation = 0.;
-            finalAngularVelocity = 0.;
+            finalRotation = 3.14 * 2. * r3;
+            finalAngularVelocity = 6. * r2 - 3.14;
             finalLifeMs = 2000. * r3;
         }
         float perc = finalLifeMs / 2000.;
         gl_Position = vec4(finalPosition, 0.0, 1.0);
-        gl_PointSize = 30.0 * perc;
+        gl_PointSize = 64.0;// * perc;
     }
 `
 const particleFrag = glsl`#version 300 es
     precision mediump float;
+
+    uniform sampler2D graphic;
+
+    in float finalRotation;
     in float finalLifeMs;
     out vec4 fragColor;
+
     void main() {
 
-        float distanceFromPointCenter = distance(gl_PointCoord.xy, vec2(0.5));
-        if (distanceFromPointCenter > .5) discard;
-
-        // TODO particle colors as vertex attributes
-        // TODO sprites/animations
         float alpha = finalLifeMs/2000.;
-        fragColor = vec4(.8, .9*alpha, .1, alpha);
+        float mid = .5;
+        float cosine = cos(finalRotation);
+        float sine = sin(finalRotation);
+        vec2 rotated = vec2(cosine * (gl_PointCoord.x - mid) + sine * (gl_PointCoord.y - mid) + mid,
+                            cosine * (gl_PointCoord.y - mid) - sine * (gl_PointCoord.x - mid) + mid);
+        vec4 color = texture(graphic, rotated);
+        color.a = alpha * color.a;
+        fragColor = color;
+
+        // float distanceFromPointCenter = distance(gl_PointCoord.xy, vec2(0.5));
+        // if (distanceFromPointCenter > .5) discard;
+
+        // // TODO particle colors as vertex attributes
+        // // TODO sprites/animations
+        // float alpha = finalLifeMs/2000.;
+        // fragColor = vec4(.8, .9*alpha, .1, alpha);
     }
 `
 
 // Init program
 const program = gl.createProgram()!;
 const vertexShader = gl.createShader(gl.VERTEX_SHADER)!;
-gl.shaderSource(vertexShader, txVertex);
+gl.shaderSource(vertexShader, particleVertex);
 gl.compileShader(vertexShader);
 var success = gl.getShaderParameter(vertexShader, gl.COMPILE_STATUS);
 if (!success) {
   const errorInfo = gl.getShaderInfoLog(vertexShader);
-  throw Error(`Could not compile vertex shader:\n\n${errorInfo}${_processSourceForError(txVertex, errorInfo!)}`);
+  throw Error(`Could not compile vertex shader:\n\n${errorInfo}${_processSourceForError(particleVertex, errorInfo!)}`);
 }
 gl.attachShader(program, vertexShader);
 
@@ -153,11 +175,13 @@ if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
 
 gl.useProgram(program);
 
+
 // Use if you have multiple transform feedback
 // const tfo = gl.createTransformFeedback()!
 // gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, tfo);
 
 // initalize data
+const TwoPI = Math.PI * 2;
 const numParticles = 100_000;
 const numInputFloats = 2 + 2 + 1 + 1 + 1;
 const particleData = new Float32Array(numParticles * numInputFloats);
@@ -166,8 +190,8 @@ for (let i = 0; i < numParticles * numInputFloats; i += numInputFloats) {
     particleData.set([
         Math.random()*2-1, Math.random()*2-1, // pos
         Math.random(), Math.random(),                        // velocity
-        0,                            // rotation
-        0,                             // angular velocity
+        Math.random() * TwoPI,                            // rotation
+        Math.random() * 2.5,                             // angular velocity
         Math.random()*2000 // life
     ], i);
 }
@@ -253,6 +277,23 @@ gl.bindBuffer(gl.ARRAY_BUFFER, null);
 const u_random = gl.getUniformLocation(program, 'uRandom');
 const u_deltaMs = gl.getUniformLocation(program, 'deltaMs');
 const u_gravity = gl.getUniformLocation(program, 'gravity');
+const u_graphic = gl.getUniformLocation(program, 'graphic');
+
+const spriteTex = gl.createTexture();
+gl.bindTexture(gl.TEXTURE_2D, spriteTex);
+gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+const sprite = new Image();
+sprite.onload = () => {
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, spriteTex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, sprite);
+}
+sprite.src = spriteImage;
+
 
 let index = 0;
 let currentVao = vaos[(index) % 2];
@@ -271,6 +312,7 @@ const draw = (timestamp: number) => {
     gl.uniform1f(u_random, Math.random());
     gl.uniform1f(u_deltaMs, elapsedMs);
     gl.uniform2fv(u_gravity, [0, -.5]);
+    gl.uniform1i(u_graphic, 0);
 
     gl.clearColor(0, 0, 0, 1.0);
     gl.clear(gl.COLOR_BUFFER_BIT);

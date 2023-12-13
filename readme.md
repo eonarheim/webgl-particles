@@ -9,7 +9,7 @@
 * [ ] Events
    - Done emitting?
    - how do you know when you need to reclaim a particle
-* [ ] Support arbitrary sprites
+* [x] Support arbitrary sprites
 * [ ] Support animation?
 * [ ] Collisions? Perhaps simple masking could work? Like for walls and junk
 
